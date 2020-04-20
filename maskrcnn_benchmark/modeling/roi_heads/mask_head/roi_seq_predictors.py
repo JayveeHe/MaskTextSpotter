@@ -50,13 +50,19 @@ class SequencePredictor(nn.Module):
                 # Caffe2 implementation uses MSRAFill, which in fact
                 # corresponds to kaiming_normal_ in PyTorch
                 nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
+        # choose device
+        if self.cfg['MODEL']['DEVICE'] == 'cpu':
+            self.device = cpu_device
+        else:
+            self.device = gpu_device
 
     def forward(self, x, decoder_targets=None, word_targets=None, use_beam_search=False):
         rescale_out = self.rescale(x)
         seq_decoder_input = self.seq_encoder(rescale_out)
         x_t, y_t = np.meshgrid(np.linspace(0, 31, 32), np.linspace(0, 7, 8))  # (h, w)
-        x_t = torch.LongTensor(x_t, device=cpu_device).cuda()
-        y_t = torch.LongTensor(y_t, device=cpu_device).cuda()
+
+        x_t = torch.LongTensor(x_t, device=self.device)
+        y_t = torch.LongTensor(y_t, device=self.device)
         x_onehot_embedding = self.x_onehot(x_t).transpose(0, 2).transpose(1, 2).repeat(seq_decoder_input.size(0),1,1,1)
         y_onehot_embedding = self.y_onehot(y_t).transpose(0, 2).transpose(1, 2).repeat(seq_decoder_input.size(0),1,1,1)
         seq_decoder_input_loc = torch.cat([seq_decoder_input, x_onehot_embedding, y_onehot_embedding], 1)
@@ -64,8 +70,8 @@ class SequencePredictor(nn.Module):
         if self.training:
             bos_onehot = np.zeros((seq_decoder_input_reshape.size(1), 1), dtype=np.int32)
             bos_onehot[:, 0] = self.cfg.SEQUENCE.BOS_TOKEN
-            decoder_input = torch.tensor(bos_onehot.tolist(), device=gpu_device)
-            decoder_hidden = torch.zeros((seq_decoder_input_reshape.size(1), 256), device=gpu_device)
+            decoder_input = torch.tensor(bos_onehot.tolist(), device=self.device)
+            decoder_hidden = torch.zeros((seq_decoder_input_reshape.size(1), 256), device=self.device)
             use_teacher_forcing = True if random.random() < self.cfg.SEQUENCE.TEACHER_FORCE_RATIO else False
             target_length = decoder_targets.size(1)
             if use_teacher_forcing:
@@ -99,7 +105,7 @@ class SequencePredictor(nn.Module):
             real_length = 0
             if use_beam_search:
                 for batch_index in range(seq_decoder_input_reshape.size(1)):
-                    decoder_hidden = torch.zeros((1, 256), device=gpu_device)
+                    decoder_hidden = torch.zeros((1, 256), device=self.device)
                     word = []
                     char_scores = []
                     detailed_char_scores = []
@@ -126,8 +132,8 @@ class SequencePredictor(nn.Module):
                 for batch_index in range(seq_decoder_input_reshape.size(1)):
                     bos_onehot = np.zeros((1, 1), dtype=np.int32)
                     bos_onehot[:, 0] = self.cfg.SEQUENCE.BOS_TOKEN
-                    decoder_input = torch.tensor(bos_onehot.tolist(), device=gpu_device)
-                    decoder_hidden = torch.zeros((1, 256), device=gpu_device)
+                    decoder_input = torch.tensor(bos_onehot.tolist(), device=self.device)
+                    decoder_hidden = torch.zeros((1, 256), device=self.device)
                     word = []
                     char_scores = []
                     for di in range(self.cfg.SEQUENCE.MAX_LENGTH):
@@ -160,7 +166,7 @@ class SequencePredictor(nn.Module):
             decoder_hidden = seq[-1][-1][0]
             onehot = np.zeros((1, 1), dtype=np.int32)
             onehot[:, 0] = seq[-1][0]
-            decoder_input = torch.tensor(onehot.tolist(), device=gpu_device)
+            decoder_input = torch.tensor(onehot.tolist(), device=self.device)
             decoder_output, decoder_hidden, decoder_attention = self.seq_decoder(
                     decoder_input, decoder_hidden, encoder_context)
             detailed_char_scores = decoder_output.cpu().numpy()
