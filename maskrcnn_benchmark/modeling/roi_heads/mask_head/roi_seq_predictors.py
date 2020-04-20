@@ -51,10 +51,10 @@ class SequencePredictor(nn.Module):
                 # corresponds to kaiming_normal_ in PyTorch
                 nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
         # choose device
-        if self.cfg['MODEL']['DEVICE'] == 'cpu':
-            self.device = cpu_device
-        else:
+        if self.cfg['MODEL']['DEVICE'] == 'gpu':
             self.device = gpu_device
+        else:
+            self.device = cpu_device
 
     def forward(self, x, decoder_targets=None, word_targets=None, use_beam_search=False):
         rescale_out = self.rescale(x)
