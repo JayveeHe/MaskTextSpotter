@@ -47,11 +47,11 @@ if __name__ == '__main__':
         confidence_threshold=0.7,
         output_polygon=True
     )
-    pickle.dump(mts, open('./masktextspotter.pkl', 'wb'))
+    # pickle.dump(mts, open('./masktextspotter.pkl', 'wb'))
     img_obj = Image.open(io.BytesIO(
         requests.get('http://www.cbdwarehouseusa.com/wp-content/uploads/2018/05/choicepowder-300x300.jpg').content))
     res = mts.run_on_pillow_image(img_obj)
     print(res)
-    new_mts = pickle.load(open('./masktextspotter.pkl', 'rb'))
-    new_res = mts.run_on_pillow_image(img_obj)
-    print(new_res)
+    # new_mts = pickle.load(open('./masktextspotter.pkl', 'rb'))
+    # new_res = mts.run_on_pillow_image(img_obj)
+    # print(new_res)
