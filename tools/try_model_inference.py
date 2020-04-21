@@ -1,9 +1,21 @@
 # coding=utf-8
 
 """
-Created by jiawhe on 2020-03-10.
+Created by Jayvee_He on 2020-03-10.
 """
+import io
 import os
+import pickle
+import sys
+
+import requests
+import torch
+from PIL import Image
+
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+print('current file:%s, PROJECT_PATH: %s' % (22, PROJECT_PATH))
+sys.path.append(PROJECT_PATH)
+
 import cv2
 import torch
 from torchvision import transforms as T
@@ -233,3 +245,24 @@ class MaskTextSpotter(object):
             ymin = min(pts[:, 0, 1])
             cv2.polylines(image, [pts], True, (0, 0, 255))
             cv2.putText(image, word, (xmin, ymin), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
+
+if __name__ == '__main__':
+    DATAPATH = sys.argv[1]
+    test_image_url = sys.argv[2]
+    device = torch.device("cpu")
+    print(device)
+
+    from maskrcnn_benchmark.config import cfg
+
+    cfg.merge_from_file('%s/models/OCR/batch.yaml' % DATAPATH)
+    print('initing ocr model')
+    mts = MaskTextSpotter(
+        cfg,
+        min_image_size=800,
+        confidence_threshold=0.7,
+        output_polygon=True
+    )
+    img_obj = Image.open(io.BytesIO(
+        requests.get(test_image_url).content))
+    res = mts.run_on_pillow_image(img_obj)
+    print(res)
