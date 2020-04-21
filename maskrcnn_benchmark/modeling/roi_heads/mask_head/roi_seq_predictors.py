@@ -50,7 +50,7 @@ class SequencePredictor(nn.Module):
                 # Caffe2 implementation uses MSRAFill, which in fact
                 # corresponds to kaiming_normal_ in PyTorch
                 nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
-        # choose CPU/GPU device
+        # choose CPU/GPU devices
         if self.cfg['MODEL']['DEVICE'] == 'gpu':
             self.device = gpu_device
         else:
