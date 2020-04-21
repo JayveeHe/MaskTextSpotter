@@ -1,6 +1,7 @@
 # coding=utf-8
 
 import io
+import os
 import pickle
 import sys
 
@@ -11,10 +12,13 @@ from PIL import Image
 from deepcat.models.ImageVecExtractor import ImageVecExtractor
 from deepcat.models.MultiModalClassifier import MultiModalClassifer
 
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+print('current file:%s, PROJECT_PATH: %s' % (22, PROJECT_PATH))
+sys.path.append(PROJECT_PATH)
 from tools.mask_text_spotter_util import MaskTextSpotter
 
 if __name__ == '__main__':
-    DATAPATH = sys
+    DATAPATH = sys.argv[1]
     # nsfw_model_path = '%s/models/NSFW/nsfw.299x299.h5' % DATAPATH
     # nsfw_model = NSFWModel(None)
     # nsfw_model.nsfw_model = nm
