@@ -3,6 +3,7 @@
 """
 Created by Jayvee_He on 2020-03-10.
 """
+import datetime
 import io
 import os
 import pickle
@@ -18,7 +19,6 @@ PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 print('current file:%s, PROJECT_PATH: %s' % (22, PROJECT_PATH))
 sys.path.append(PROJECT_PATH)
 
-
 if __name__ == '__main__':
     DATAPATH = sys.argv[1]
     test_image_url = sys.argv[2]
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     # from maskrcnn_benchmark.config import cfg
     #
     # cfg.merge_from_file('%s/models/OCR/batch.yaml' % DATAPATH)
-    cfg = pickle.load(open('%s/models/OCR/config.pkl' % DATAPATH,'rb'))
+    cfg = pickle.load(open('%s/models/OCR/config.pkl' % DATAPATH, 'rb'))
     print('initing ocr model')
     mts = MaskTextSpotter(
         cfg,
@@ -36,7 +36,9 @@ if __name__ == '__main__':
         confidence_threshold=0.7,
         output_polygon=True
     )
+    print('[%s]predicting' % datetime.datetime.now())
     img_obj = Image.open(io.BytesIO(
         requests.get(test_image_url).content))
     res = mts.run_on_pillow_image(img_obj)
+    print('[%s]done' % datetime.datetime.now())
     print(res)
