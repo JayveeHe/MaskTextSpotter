@@ -25,9 +25,10 @@ if __name__ == '__main__':
     device = torch.device("cpu")
     print(device)
 
-    from maskrcnn_benchmark.config import cfg
-
-    cfg.merge_from_file('%s/models/OCR/batch.yaml' % DATAPATH)
+    # from maskrcnn_benchmark.config import cfg
+    #
+    # cfg.merge_from_file('%s/models/OCR/batch.yaml' % DATAPATH)
+    cfg = pickle.load(open('%s/models/OCR/config.pkl' % DATAPATH,'rb'))
     print('initing ocr model')
     mts = MaskTextSpotter(
         cfg,
