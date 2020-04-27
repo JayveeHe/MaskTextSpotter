@@ -58,7 +58,7 @@ def get_extensions():
 
 setup(
     name="maskrcnn_benchmark",
-    version="0.1.4",
+    version="0.1.5",
     author="fmassa",
     url="https://github.com/facebookresearch/maskrnn-benchmark",
     description="object detection in pytorch",
