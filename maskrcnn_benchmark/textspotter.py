@@ -3,10 +3,11 @@
 """
 Created by Jayvee_He on 2020-04-22.
 """
-
+import copy
 
 import cv2
 import torch
+from shapely.geometry import Polygon, LineString, Point
 from torchvision import transforms as T
 
 from maskrcnn_benchmark.modeling.detector import build_detection_model
@@ -16,6 +17,10 @@ from maskrcnn_benchmark.utils.chars import getstr_grid, get_tight_rect
 
 from PIL import Image
 import numpy as np
+
+from symspellpy import SymSpell, Verbosity
+
+sym_spell = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
 
 
 class MaskTextSpotter(object):
@@ -78,15 +83,103 @@ class MaskTextSpotter(object):
             result_polygons (list): detection results
             result_words (list): recognition results
         """
-        result_polygons, result_words = self.compute_prediction(image)
-        return result_polygons, result_words
+        result_polygons, result_words, result_dict = self.compute_prediction(image)
+        return result_polygons, result_words, result_dict
 
     def run_on_pillow_image(self, image):
         arr = np.array(image)
-        result_polygons, result_words = self.run_on_opencv_image(arr)
-        return result_polygons, result_words
+        result_polygons, result_words, result_dict = self.run_on_opencv_image(arr)
+        return result_polygons, result_words, result_dict
 
     def compute_prediction(self, original_image):
+        def chunks(l, n):
+            for i in range(0, len(l), n):
+                yield l[i: i + n]
+
+        def mk_direction(char_polygons):
+
+            def centroid(char_polygon):
+                centroid = Polygon(list(chunks(char_polygon, 2))).centroid.coords
+                return list(centroid)[0]
+
+            first, last = char_polygons[0], char_polygons[-1]
+            start, end = centroid(first), centroid(last)
+            if start[0] == end[0]:
+                end = (end[0] + 1, end[1])
+            return start, end
+
+        def line_detection(dicts, char_ratio=1.5):
+            # box  [x1, y1, x2, y2]
+            sorted_res = sorted(dicts, key=lambda d: d["box"][0])
+            lines = dict()
+
+            def point_in_next_word(word):
+                width = word["box"][2] - word["box"][0]  # width = x2 - x1
+                avg_char_width = width / float(len(word["seq_word"]))
+                last_right_border = word["box"][2]
+                next_word_pos_x = last_right_border + char_ratio * avg_char_width
+                next_word_pos_y = word["box"][1]
+                direction = word["direction"]
+                point = Point(next_word_pos_x, next_word_pos_y)
+                line = LineString(direction)
+                x = np.array(point.coords[0])
+                u = np.array(line.coords[0])
+                v = np.array(line.coords[len(line.coords) - 1])
+                n = v - u
+                n /= np.linalg.norm(n, 2)
+                P = u + n * np.dot(x - u, n)
+                return (int(P[0]), int(P[1]))
+
+            def distance_to_mid(word_point, word_box):
+                point = Point(word_point["next_point"])
+                box = word_box["box"]
+                return abs(point.y - (box[1] + box[3]) / 2.0)  # abs( y - (y2+y1)/2 )
+
+            def find_next_word(word, index, sorted_words):
+                next_point = Point(word["next_point"])
+                next_words = [other for other in sorted_words[index + 1:] if
+                              Polygon(chunks(other["polygon"], 2)).contains(next_point)]
+                if next_words:
+                    return min(next_words, key=lambda x: distance_to_mid(word, x))
+                else:
+                    return None
+
+            def find_previous_word(prev, word):
+                if "previous_word" not in word.keys():
+                    return prev
+                else:
+                    return min(prev, word["previous_word"], key=lambda x: distance_to_mid(x, word))
+
+            for w in sorted_res:
+                w["next_point"] = point_in_next_word(w)
+
+            for i, w in enumerate(sorted_res):
+                next_word = find_next_word(w, i, sorted_res)
+                w["next_word"] = None
+                if next_word:
+                    better_previous = find_previous_word(w, next_word)
+                    if better_previous == w:
+                        w["next_word"] = next_word
+                        if "previous_word" in next_word.keys():
+                            next_word["previous_word"]["next_word"] = None
+                        next_word["previous_word"] = w
+
+            for w in sorted_res:
+                if "previous_word" not in w.keys():
+                    a = w
+                    key_y = a["box"][1]
+                    while key_y in lines.keys():
+                        key_y = key_y + 1
+                    lines[key_y] = [a]
+                    while a["next_word"]:
+                        a = a["next_word"]
+                        lines[key_y].append(a)
+
+            sorted_lines = sorted(lines.items(), key=lambda x: x[0])
+            return ",".join([" ".join([w["seq_word"] for w in line]) for _, line in sorted_lines]), sorted_lines
+
+
+
         # apply pre-processing to image
         import datetime, time
         start_time = time.time()
@@ -109,7 +202,8 @@ class MaskTextSpotter(object):
         char_predictions = predictions[1]
         char_mask = char_predictions['char_mask']
         char_boxes = char_predictions['boxes']
-        words, rec_scores = self.process_char_mask(char_mask, char_boxes)
+        words, rec_scores, rec_char_scores, char_polygons = self.process_char_mask(char_mask, char_boxes)
+        detailed_seq_scores = char_predictions['detailed_seq_scores']
         seq_words = char_predictions['seq_outputs']
         seq_scores = char_predictions['seq_scores']
         global_predictions = [o.to(self.cpu_device) for o in global_predictions]
@@ -119,13 +213,17 @@ class MaskTextSpotter(object):
 
         # reshape prediction (a BoxList) into the original image size
         height, width = original_image.shape[:-1]
+        test_image_width, test_image_height = global_prediction.size
         global_prediction = global_prediction.resize((width, height))
+        resize_ratio = float(height) / test_image_height
         boxes = global_prediction.bbox.tolist()
         scores = global_prediction.get_field("scores").tolist()
         masks = global_prediction.get_field("mask").cpu().numpy()
 
         result_polygons = []
         result_words = []
+        result_dicts = []
+
         for k, box in enumerate(boxes):
             box = list(map(int, box))
             mask = masks[k, 0, :, :]
@@ -139,27 +237,65 @@ class MaskTextSpotter(object):
                 continue
             word = words[k]
             rec_score = rec_scores[k]
+            char_score = rec_char_scores[k]
             seq_word = seq_words[k]
             seq_char_scores = seq_scores[k]
             seq_score = sum(seq_char_scores) / float(len(seq_char_scores))
-            if seq_score > rec_score:
-                result_words.append(seq_word)
-            else:
-                result_words.append(word)
+            spell_fix = lambda word: \
+                [s.term for s in sym_spell.lookup(word, Verbosity.CLOSEST, max_edit_distance=2, include_unknown=True)][
+                    0]
+            detailed_seq_score = detailed_seq_scores[k]
+            detailed_seq_score = np.squeeze(np.array(detailed_seq_score), axis=1)
+            # if 'total_text' in output_folder or 'cute80' in output_folder:
+            #     result_log = [int(x * 1.0) for x in box[:4]] + polygon + [word] + [seq_word] + [score] + [rec_score] + [
+            #         seq_score] + [char_score] + [detailed_seq_score] + [len(polygon)]
+            # else:
+            result_log = [int(x * 1.0) for x in box[:4]] + polygon + [word] + [seq_word] + [score] + [rec_score] + [
+                seq_score] + [char_score] + [detailed_seq_score]
+            # result_logs.append(result_log)
+            if len(seq_word) > 0 and len(char_polygons[k]) > 0:
+                d = {
+                    "seq_word": seq_word if len(seq_word) < 4 else spell_fix(seq_word),
+                    "seq_word_orig": seq_word,
+                    "direction": mk_direction([[int(c * resize_ratio) for c in p] for p in char_polygons[k]]),
+                    "word": word if len(word) < 4 else spell_fix(word),
+                    "word_orig": word,
+                    "box": [int(x * 1.0) for x in box[:4]],
+                    "polygon": polygon,
+                    "prob": score * seq_score
+                }
+                result_words.append(d['word'])
+                result_dicts.append(d)
+
         # default_logger.debug('done', datetime.datetime.now())
+        label, details = line_detection(result_dicts)
         end_time = time.time()
         # default_logger.debug('cost time: %s' % (end_time - start_time))
-        return result_polygons, result_words
+        return result_polygons, result_words, result_dicts
+
+    # def process_char_mask(self, char_masks, boxes, threshold=192):
+    #     texts, rec_scores = [], []
+    #     for index in range(char_masks.shape[0]):
+    #         box = list(boxes[index])
+    #         box = list(map(int, box))
+    #         text, rec_score, _, _ = getstr_grid(char_masks[index, :, :, :].copy(), box, threshold=threshold)
+    #         texts.append(text)
+    #         rec_scores.append(rec_score)
+    #     return texts, rec_scores
 
     def process_char_mask(self, char_masks, boxes, threshold=192):
-        texts, rec_scores = [], []
+        texts, rec_scores, rec_char_scores, char_polygons = [], [], [], []
         for index in range(char_masks.shape[0]):
             box = list(boxes[index])
             box = list(map(int, box))
-            text, rec_score, _, _ = getstr_grid(char_masks[index, :, :, :].copy(), box, threshold=threshold)
+            text, rec_score, rec_char_score, char_polygon = getstr_grid(char_masks[index, :, :, :].copy(), box,
+                                                                        threshold=threshold)
             texts.append(text)
             rec_scores.append(rec_score)
-        return texts, rec_scores
+            rec_char_scores.append(rec_char_score)
+            char_polygons.append(char_polygon)
+            # segmss.append(segms)
+        return texts, rec_scores, rec_char_scores, char_polygons
 
     def mask2polygon(self, mask, box, im_size, threshold=0.5, output_polygon=True):
         # mask 32*128
@@ -224,11 +360,15 @@ class MaskTextSpotter(object):
             polygon = list(map(int, polygon))
         return polygon
 
-    def visualization(self, image, polygons, words):
+    def visualization(self, img, polygons, words):
+        cur_img = copy.deepcopy(img)
         for polygon, word in zip(polygons, words):
             pts = np.array(polygon, np.int32)
             pts = pts.reshape((-1, 1, 2))
             xmin = min(pts[:, 0, 0])
             ymin = min(pts[:, 0, 1])
-            cv2.polylines(image, [pts], True, (0, 0, 255))
-            cv2.putText(image, word, (xmin, ymin), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
+            cv2.polylines(cur_img, [pts], True, (0, 0, 255))
+            cv2.putText(cur_img, word, (xmin, ymin), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
+        return cur_img
+
+
