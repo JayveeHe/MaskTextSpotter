@@ -271,7 +271,8 @@ class MaskTextSpotter(object):
         label, details = line_detection(result_dicts)
         end_time = time.time()
         # default_logger.debug('cost time: %s' % (end_time - start_time))
-        return result_polygons, result_words, result_dicts
+        line_result = {'label': label, 'details': details}
+        return result_polygons, result_words, line_result
 
     # def process_char_mask(self, char_masks, boxes, threshold=192):
     #     texts, rec_scores = [], []

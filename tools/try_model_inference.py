@@ -339,6 +339,7 @@ if __name__ == '__main__':
     print('[%s]predicting' % datetime.datetime.now())
     img_obj = Image.open(io.BytesIO(
         requests.get(test_image_url, verify=False).content))
+    img_obj = img_obj.convert('RGB')
     res = mts.run_on_pillow_image(img_obj)
     print('[%s]done' % datetime.datetime.now())
     print(res)
