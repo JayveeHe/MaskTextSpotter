@@ -178,8 +178,6 @@ class MaskTextSpotter(object):
             sorted_lines = sorted(lines.items(), key=lambda x: x[0])
             return ",".join([" ".join([w["seq_word"] for w in line]) for _, line in sorted_lines]), sorted_lines
 
-
-
         # apply pre-processing to image
         import datetime, time
         start_time = time.time()
@@ -196,7 +194,7 @@ class MaskTextSpotter(object):
             predictions = self.model(image_list)
             if not predictions or len(predictions) < 1:
                 # print('no text detected')
-                return [], []
+                return [], [], {'label': [], 'details': []}
         # print('post process', datetime.datetime.now())
         global_predictions = predictions[0]
         char_predictions = predictions[1]
@@ -371,5 +369,3 @@ class MaskTextSpotter(object):
             cv2.polylines(cur_img, [pts], True, (0, 0, 255))
             cv2.putText(cur_img, word, (xmin, ymin), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
         return cur_img
-
-

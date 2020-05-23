@@ -342,7 +342,19 @@ if __name__ == '__main__':
     img_obj = img_obj.convert('RGB')
     res = mts.run_on_pillow_image(img_obj)
     print('[%s]done' % datetime.datetime.now())
-    print(res)
+    # print(res)
+    import json
+
+    line_result = {'label': res[2]['label'],
+                   'details': [{'idx': b[0],
+                                'word_list': [{'word': c['word'],
+                                               'word_orig': c['word_orig'],
+                                               'prob': c['prob'],
+                                               'polygon': c['polygon']}
+                                              for c in b[1]]}
+                               for b in res[2]['details']]}
+    json_line_result = json.dumps(line_result)
+    print(line_result)
     img = cv2.cvtColor(np.asarray(img_obj), cv2.COLOR_RGB2BGR)
 
     vis_image = mts.visualization(img, res[0], res[1])
