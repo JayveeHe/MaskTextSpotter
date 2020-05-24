@@ -51,7 +51,7 @@ class SequencePredictor(nn.Module):
                 # corresponds to kaiming_normal_ in PyTorch
                 nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
         # choose CPU/GPU devices from cfg file
-        if self.cfg['MODEL']['DEVICE'] == 'gpu':
+        if self.cfg['MODEL']['DEVICE'] == 'cuda':
             self.device = gpu_device
         else:
             self.device = cpu_device
