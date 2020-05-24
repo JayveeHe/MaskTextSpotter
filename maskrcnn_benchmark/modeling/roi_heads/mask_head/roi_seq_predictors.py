@@ -61,8 +61,10 @@ class SequencePredictor(nn.Module):
         seq_decoder_input = self.seq_encoder(rescale_out)
         x_t, y_t = np.meshgrid(np.linspace(0, 31, 32), np.linspace(0, 7, 8))  # (h, w)
 
-        x_t = torch.LongTensor(x_t, device=self.device)
-        y_t = torch.LongTensor(y_t, device=self.device)
+        x_t = torch.LongTensor(x_t)
+        x_t = x_t.to(self.device)
+        y_t = torch.LongTensor(y_t)
+        y_t = y_t.to(self.device)
         x_onehot_embedding = self.x_onehot(x_t).transpose(0, 2).transpose(1, 2).repeat(seq_decoder_input.size(0),1,1,1)
         y_onehot_embedding = self.y_onehot(y_t).transpose(0, 2).transpose(1, 2).repeat(seq_decoder_input.size(0),1,1,1)
         seq_decoder_input_loc = torch.cat([seq_decoder_input, x_onehot_embedding, y_onehot_embedding], 1)
