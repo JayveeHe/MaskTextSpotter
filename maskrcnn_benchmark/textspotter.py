@@ -194,7 +194,7 @@ class MaskTextSpotter(object):
             predictions = self.model(image_list)
             if not predictions or len(predictions) < 1:
                 # print('no text detected')
-                return [], [], {'label': [], 'details': []}
+                return [], [], {'label': '', 'details': []}
         # print('post process', datetime.datetime.now())
         global_predictions = predictions[0]
         char_predictions = predictions[1]
