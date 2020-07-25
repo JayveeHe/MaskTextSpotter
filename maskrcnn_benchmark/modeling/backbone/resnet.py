@@ -34,25 +34,25 @@ StageSpec = namedtuple(
 # Standard ResNet models
 # -----------------------------------------------------------------------------
 # ResNet-50 (including all stages)
-ResNet50StagesTo5 = (
+ResNet50StagesTo5 = [
     StageSpec(index=i, block_count=c, return_features=r)
     for (i, c, r) in ((1, 3, False), (2, 4, False), (3, 6, False), (4, 3, True))
-)
+]
 # ResNet-50 up to stage 4 (excludes stage 5)
-ResNet50StagesTo4 = (
+ResNet50StagesTo4 = [
     StageSpec(index=i, block_count=c, return_features=r)
     for (i, c, r) in ((1, 3, False), (2, 4, False), (3, 6, True))
-)
+]
 # ResNet-50-FPN (including all stages)
-ResNet50FPNStagesTo5 = (
+ResNet50FPNStagesTo5 = [
     StageSpec(index=i, block_count=c, return_features=r)
     for (i, c, r) in ((1, 3, True), (2, 4, True), (3, 6, True), (4, 3, True))
-)
+]
 # ResNet-101-FPN (including all stages)
-ResNet101FPNStagesTo5 = (
+ResNet101FPNStagesTo5 = [
     StageSpec(index=i, block_count=c, return_features=r)
     for (i, c, r) in ((1, 3, True), (2, 4, True), (3, 23, True), (4, 3, True))
-)
+]
 
 
 class ResNet(nn.Module):
@@ -61,7 +61,7 @@ class ResNet(nn.Module):
 
         # If we want to use the cfg in forward(), then we should make a copy
         # of it and store it for later use:
-        # self.cfg = cfg.clone()
+        self.cfg = cfg.clone()
 
         # Translate string names to implementations
         stem_module = _STEM_MODULES[cfg.MODEL.RESNETS.STEM_FUNC]
