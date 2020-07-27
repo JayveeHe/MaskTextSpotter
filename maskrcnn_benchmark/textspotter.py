@@ -273,7 +273,10 @@ class MaskTextSpotter(object):
         end_time = time.time()
         # default_logger.debug('cost time: %s' % (end_time - start_time))
         line_result = {'label': label, 'details': details}
-        return result_polygons, result_words, line_result
+        line_result_words = [a[1][0]['seq_word'] for a in line_result['details']]
+        line_result_polygons = [a[1][0]['polygon'] for a in line_result['details']]
+        # return result_polygons, result_words, line_result
+        return line_result_polygons, line_result_words, line_result
 
     # def process_char_mask(self, char_masks, boxes, threshold=192):
     #     texts, rec_scores = [], []
