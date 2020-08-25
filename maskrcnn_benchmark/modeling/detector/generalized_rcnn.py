@@ -29,6 +29,8 @@ class GeneralizedRCNN(nn.Module):
         self.backbone = build_backbone(cfg)
         self.rpn = build_rpn(cfg)
         self.roi_heads = build_roi_heads(cfg)
+        # self.quant = torch.quantization.QuantStub()
+        # self.dequant = torch.quantization.DeQuantStub()
 
     def forward(self, images, targets=None):
         """
@@ -46,7 +48,9 @@ class GeneralizedRCNN(nn.Module):
         if self.training and targets is None:
             raise ValueError("In training mode, targets should be passed")
         images = to_image_list(images)
-        features = self.backbone(images.tensors)
+        # x = self.quant(images.tensors)
+        x = images.tensors
+        features = self.backbone(x)
         proposals, proposal_losses = self.rpn(images, features, targets)
         if self.roi_heads:
             x, result, detector_losses = self.roi_heads(features, proposals, targets)

@@ -33,13 +33,23 @@ class RPNHead(nn.Module):
             torch.nn.init.normal_(l.weight, std=0.01)
             torch.nn.init.constant_(l.bias, 0)
 
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
+
     def forward(self, x):
         logits = []
         bbox_reg = []
         for feature in x:
+            feature = self.quant(feature)
             t = F.relu(self.conv(feature))
-            logits.append(self.cls_logits(t))
-            bbox_reg.append(self.bbox_pred(t))
+            # logits.append(self.cls_logits(t))
+            # bbox_reg.append(self.bbox_pred(t))
+            logit = self.cls_logits(t)
+            logit = self.dequant(logit)
+            bbox_pred = self.bbox_pred(t)
+            bbox_pred = self.dequant(bbox_pred)
+            logits.append(logit)
+            bbox_reg.append(bbox_pred)
         return logits, bbox_reg
 
 

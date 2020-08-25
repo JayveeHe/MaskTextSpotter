@@ -15,10 +15,13 @@ from collections import namedtuple
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn import Conv2d, BatchNorm2d
+from torch.quantization import fuse_modules
+from torch.quantization.fuse_modules import fuse_conv_bn_relu, fuse_conv_bn
 
-from maskrcnn_benchmark.layers import FrozenBatchNorm2d
-from maskrcnn_benchmark.layers import Conv2d
+# from maskrcnn_benchmark.layers import FrozenBatchNorm2d
 
+# from maskrcnn_benchmark.layers import Conv2d
 
 # ResNet stage specification
 StageSpec = namedtuple(
@@ -101,6 +104,8 @@ class ResNet(nn.Module):
 
         # Optionally freeze (requires_grad=False) parts of the backbone
         self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_CONV_BODY_AT)
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
 
     def _freeze_backbone(self, freeze_at):
         for stage_index in range(freeze_at):
@@ -112,25 +117,58 @@ class ResNet(nn.Module):
                 p.requires_grad = False
 
     def forward(self, x):
+        x = self.quant(x)
         outputs = []
         x = self.stem(x)
-        for stage_name in self.stages:
-            x = getattr(self, stage_name)(x)
-            if self.return_features[stage_name]:
-                outputs.append(x)
+        # for stage_name in self.stages:
+        #     x = getattr(self, stage_name)(x)
+        #     if self.return_features[stage_name]:
+        #         return_x = self.dequant(x)
+        #         outputs.append(return_x)
+        # for jit save
+        x = self.layer1(x)
+        if self.return_features['layer1']:
+            return_x = self.dequant(x)
+            outputs.append(return_x)
+        x = self.layer2(x)
+        if self.return_features['layer2']:
+            return_x = self.dequant(x)
+            outputs.append(return_x)
+        x = self.layer3(x)
+        if self.return_features['layer3']:
+            return_x = self.dequant(x)
+            outputs.append(return_x)
+        x = self.layer4(x)
+        if self.return_features['layer4']:
+            return_x = self.dequant(x)
+            outputs.append(return_x)
+
         return outputs
+
+    def fuse_model(self):
+        r"""Fuse conv/bn/relu modules in resnet models
+
+        Fuse conv+bn+relu/ Conv+relu/conv+Bn modules to prepare for quantization.
+        Model is modified in place.  Note that this operation does not change numerics
+        and the model after modification is in floating point
+        """
+
+        # fuse_modules(self, ['conv1', 'bn1', 'relu'], inplace=True)
+        for m in self.modules():
+            if type(m) == BottleneckWithFixedBatchNorm or type(m) == StemWithFixedBatchNorm:
+                m.fuse_model()
 
 
 class ResNetHead(nn.Module):
     def __init__(
-        self,
-        block_module,
-        stages,
-        num_groups=1,
-        width_per_group=64,
-        stride_in_1x1=True,
-        stride_init=None,
-        res2_out_channels=256,
+            self,
+            block_module,
+            stages,
+            num_groups=1,
+            width_per_group=64,
+            stride_in_1x1=True,
+            stride_init=None,
+            res2_out_channels=256,
     ):
         super(ResNetHead, self).__init__()
 
@@ -169,14 +207,14 @@ class ResNetHead(nn.Module):
 
 
 def _make_stage(
-    transformation_module,
-    in_channels,
-    bottleneck_channels,
-    out_channels,
-    block_count,
-    num_groups,
-    stride_in_1x1,
-    first_stride,
+        transformation_module,
+        in_channels,
+        bottleneck_channels,
+        out_channels,
+        block_count,
+        num_groups,
+        stride_in_1x1,
+        first_stride,
 ):
     blocks = []
     stride = first_stride
@@ -198,13 +236,13 @@ def _make_stage(
 
 class BottleneckWithFixedBatchNorm(nn.Module):
     def __init__(
-        self,
-        in_channels,
-        bottleneck_channels,
-        out_channels,
-        num_groups=1,
-        stride_in_1x1=True,
-        stride=1,
+            self,
+            in_channels,
+            bottleneck_channels,
+            out_channels,
+            num_groups=1,
+            stride_in_1x1=True,
+            stride=1,
     ):
         super(BottleneckWithFixedBatchNorm, self).__init__()
 
@@ -214,7 +252,8 @@ class BottleneckWithFixedBatchNorm(nn.Module):
                 Conv2d(
                     in_channels, out_channels, kernel_size=1, stride=stride, bias=False
                 ),
-                FrozenBatchNorm2d(out_channels),
+                # FrozenBatchNorm2d(out_channels),
+                BatchNorm2d(out_channels),
             )
 
         # The original MSRA ResNet models have stride in the first 1x1 conv
@@ -229,7 +268,8 @@ class BottleneckWithFixedBatchNorm(nn.Module):
             stride=stride_1x1,
             bias=False,
         )
-        self.bn1 = FrozenBatchNorm2d(bottleneck_channels)
+        # self.bn1 = FrozenBatchNorm2d(bottleneck_channels)
+        self.bn1 = BatchNorm2d(bottleneck_channels)
         # TODO: specify init for the above
 
         self.conv2 = Conv2d(
@@ -241,23 +281,30 @@ class BottleneckWithFixedBatchNorm(nn.Module):
             bias=False,
             groups=num_groups,
         )
-        self.bn2 = FrozenBatchNorm2d(bottleneck_channels)
+        # self.bn2 = FrozenBatchNorm2d(bottleneck_channels)
+        self.bn2 = BatchNorm2d(bottleneck_channels)
 
         self.conv3 = Conv2d(
             bottleneck_channels, out_channels, kernel_size=1, bias=False
         )
-        self.bn3 = FrozenBatchNorm2d(out_channels)
+        # self.bn3 = FrozenBatchNorm2d(out_channels)
+        self.bn3 = BatchNorm2d(out_channels)
+        self.skip_add_relu = nn.quantized.FloatFunctional()
+        self.relu1 = nn.ReLU(inplace=False)
+        self.relu2 = nn.ReLU(inplace=False)
 
     def forward(self, x):
         residual = x
 
         out = self.conv1(x)
         out = self.bn1(out)
-        out = F.relu_(out)
+        # out = F.relu_(out)
+        out = self.relu1(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
-        out = F.relu_(out)
+        # out = F.relu_(out)
+        out = self.relu2(out)
 
         out0 = self.conv3(out)
         out = self.bn3(out0)
@@ -265,10 +312,20 @@ class BottleneckWithFixedBatchNorm(nn.Module):
         if self.downsample is not None:
             residual = self.downsample(x)
 
-        out += residual
+        out = self.skip_add_relu.add_relu(out, residual)  # for quantization
+        # out += residual
         out = F.relu_(out)
 
         return out
+
+    def fuse_model(self):
+        fuse_modules(self, [['conv1', 'bn1', 'relu1'],
+                            ['conv2', 'bn2', 'relu2'],
+                            ['conv3', 'bn3']], inplace=True,
+                     # fuser_func=fuse_func_resnet
+                     )
+        if self.downsample:
+            torch.quantization.fuse_modules(self.downsample, ['0', '1'], inplace=True)
 
 
 class StemWithFixedBatchNorm(nn.Module):
@@ -280,14 +337,24 @@ class StemWithFixedBatchNorm(nn.Module):
         self.conv1 = Conv2d(
             3, out_channels, kernel_size=7, stride=2, padding=3, bias=False
         )
-        self.bn1 = FrozenBatchNorm2d(out_channels)
+        # self.bn1 = FrozenBatchNorm2d(out_channels)
+        self.bn1 = BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=False)
 
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
-        x = F.relu_(x)
+        # x = F.relu_(x)
+        x = self.relu(x)
         x = F.max_pool2d(x, kernel_size=3, stride=2, padding=1)
         return x
+
+    def fuse_model(self):
+        torch.quantization.fuse_modules(self, [['conv1', 'bn1', 'relu']], inplace=True,
+                                        # fuser_func=fuse_func_resnet
+                                        )
+        # if self.downsample:
+        #     torch.quantization.fuse_modules(self.downsample, ['0', '1'], inplace=True)
 
 
 _TRANSFORMATION_MODULES = {"BottleneckWithFixedBatchNorm": BottleneckWithFixedBatchNorm}

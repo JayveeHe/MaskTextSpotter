@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+import torch
 from torch import nn
 
 
@@ -43,11 +44,15 @@ class FPNPredictor(nn.Module):
         nn.init.normal_(self.bbox_pred.weight, std=0.001)
         for l in [self.cls_score, self.bbox_pred]:
             nn.init.constant_(l.bias, 0)
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
 
     def forward(self, x):
+        x = self.quant(x)
         scores = self.cls_score(x)
         bbox_deltas = self.bbox_pred(x)
-
+        scores = self.dequant(scores)
+        bbox_deltas = self.dequant(bbox_deltas)
         return scores, bbox_deltas
 
 

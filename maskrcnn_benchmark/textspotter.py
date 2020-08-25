@@ -32,15 +32,16 @@ class MaskTextSpotter(object):
             min_image_size=224,
             output_polygon=True
     ):
+        self.__name__ = 'MaskTextSpotter'
         self.cfg = cfg.clone()
         self.model = build_detection_model(cfg)
         self.model.eval()
         self.device = torch.device(cfg.MODEL.DEVICE)
         self.model.to(self.device)
         self.min_image_size = min_image_size
-
-        checkpointer = DetectronCheckpointer(cfg, self.model)
-        _ = checkpointer.load(cfg.MODEL.WEIGHT)
+        if cfg.MODEL.WEIGHT:
+            checkpointer = DetectronCheckpointer(cfg, self.model)
+            _ = checkpointer.load(cfg.MODEL.WEIGHT)
 
         self.transforms = self.build_transform()
         self.cpu_device = torch.device("cpu")
@@ -378,3 +379,7 @@ class MaskTextSpotter(object):
             cv2.polylines(cur_img, [pts], True, (b, g, r))
             cv2.putText(cur_img, word, (xmin, ymin), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (b, g, r), 1)
         return cur_img
+
+    def save_jit_model(self, output_path):
+        #
+        pass

@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+import torch
 from torch import nn
 from torch.nn import functional as F
 
@@ -67,12 +68,17 @@ class FPN2MLPFeatureExtractor(nn.Module):
             nn.init.kaiming_uniform_(l.weight, a=1)
             nn.init.constant_(l.bias, 0)
 
+        # for quantization
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
+
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
         x = x.view(x.size(0), -1)
-
+        x = self.quant(x)
         x = F.relu(self.fc6(x))
         x = F.relu(self.fc7(x))
+        x = self.dequant(x)
 
         return x
 

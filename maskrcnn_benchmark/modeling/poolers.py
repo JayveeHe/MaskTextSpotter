@@ -76,6 +76,10 @@ class Pooler(nn.Module):
         lvl_max = -math.log2(scales[-1])
         self.map_levels = LevelMapper(lvl_min, lvl_max)
 
+        # for quantization
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
+
     def convert_to_roi_format(self, boxes):
         concat_boxes = cat([b.bbox for b in boxes], dim=0)
         device, dtype = concat_boxes.device, concat_boxes.dtype
