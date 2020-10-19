@@ -4,6 +4,7 @@
 Created by Jayvee_He on 2020-04-22.
 """
 import copy
+import random
 
 import cv2
 import torch
@@ -87,7 +88,7 @@ class MaskTextSpotter(object):
         return result_polygons, result_words, result_dict
 
     def run_on_pillow_image(self, image):
-        arr = np.array(image)
+        arr = np.array(image, dtype=np.uint8)
         result_polygons, result_words, result_dict = self.run_on_opencv_image(arr)
         return result_polygons, result_words, result_dict
 
@@ -191,6 +192,7 @@ class MaskTextSpotter(object):
         # compute predictions
         with torch.no_grad():
             # print('predict', datetime.datetime.now())
+            self.model.eval()
             predictions = self.model(image_list)
             if not predictions or len(predictions) < 1:
                 # print('no text detected')
@@ -223,16 +225,17 @@ class MaskTextSpotter(object):
         result_dicts = []
 
         for k, box in enumerate(boxes):
+            score = scores[k]
+            if score < self.confidence_threshold:
+                continue
             box = list(map(int, box))
             mask = masks[k, 0, :, :]
             polygon = self.mask2polygon(mask, box, original_image.shape, threshold=0.5,
                                         output_polygon=self.output_polygon)
+
             if polygon is None:
                 polygon = [box[0], box[1], box[2], box[1], box[2], box[3], box[0], box[3]]
             result_polygons.append(polygon)
-            score = scores[k]
-            if score < self.confidence_threshold:
-                continue
             word = words[k]
             rec_score = rec_scores[k]
             char_score = rec_char_scores[k]
@@ -270,7 +273,10 @@ class MaskTextSpotter(object):
         end_time = time.time()
         # default_logger.debug('cost time: %s' % (end_time - start_time))
         line_result = {'label': label, 'details': details}
-        return result_polygons, result_words, line_result
+        line_result_words = [a[1][0]['seq_word'] for a in line_result['details']]
+        line_result_polygons = [a[1][0]['polygon'] for a in line_result['details']]
+        # return result_polygons, result_words, line_result
+        return line_result_polygons, line_result_words, line_result
 
     # def process_char_mask(self, char_masks, boxes, threshold=192):
     #     texts, rec_scores = [], []
@@ -366,6 +372,9 @@ class MaskTextSpotter(object):
             pts = pts.reshape((-1, 1, 2))
             xmin = min(pts[:, 0, 0])
             ymin = min(pts[:, 0, 1])
-            cv2.polylines(cur_img, [pts], True, (0, 0, 255))
-            cv2.putText(cur_img, word, (xmin, ymin), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
+            r = random.randint(0, 255)
+            g = random.randint(0, 255)
+            b = random.randint(0, 255)
+            cv2.polylines(cur_img, [pts], True, (b, g, r))
+            cv2.putText(cur_img, word, (xmin, ymin), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (b, g, r), 1)
         return cur_img
