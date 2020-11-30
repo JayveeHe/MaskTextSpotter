@@ -273,8 +273,10 @@ class MaskTextSpotter(object):
         end_time = time.time()
         # default_logger.debug('cost time: %s' % (end_time - start_time))
         line_result = {'label': label, 'details': details}
-        line_result_words = [a[1][0]['seq_word'] for a in line_result['details']]
-        line_result_polygons = [a[1][0]['polygon'] for a in line_result['details']]
+        # line_result_words = [a[1][0]['seq_word'] for a in line_result['details']]
+        # line_result_polygons = [a[1][0]['polygon'] for a in line_result['details']]
+        line_result_words = [a['seq_word'] for a in result_dicts]
+        line_result_polygons = [a['polygon'] for a in result_dicts]
         # return result_polygons, result_words, line_result
         return line_result_polygons, line_result_words, line_result
 
